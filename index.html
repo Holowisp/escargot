@@ -1,0 +1,1198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#FFF3E2">
+<title>Escargot — live voice snail</title>
+<style>
+  :root{
+    --bg1:#FFF6E9; --bg2:#FFE3C4; --ink:#3B2415; --ink-soft:#8A6B52;
+    --card:#FFFFFF; --line:#F0DCC4;
+    --hot:#F0521F; --hot-d:#C93C13; --amber:#F9A82A; --yolk:#F5C518;
+    --ok:#2E9E5B;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;margin:0}
+  body{
+    font:16px/1.45 ui-rounded,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    color:var(--ink);
+    background:
+      radial-gradient(120% 80% at 50% 0%, #FFFDF8 0%, var(--bg1) 45%, var(--bg2) 100%) fixed;
+    overflow:hidden; overscroll-behavior:none;
+    -webkit-user-select:none; user-select:none;
+  }
+  #app{
+    position:fixed; inset:0; display:flex; flex-direction:column;
+    padding:calc(env(safe-area-inset-top) + 10px) 16px calc(env(safe-area-inset-bottom) + 14px);
+  }
+
+  /* ---------- crash / no-js banner ---------- */
+  #banner{
+    display:none; position:fixed; left:10px; right:10px;
+    top:calc(env(safe-area-inset-top) + 10px); z-index:60;
+    background:#FDECE8; border:1.5px solid #F4C3B6; border-radius:14px;
+    padding:12px 14px; font-size:13px; line-height:1.45; color:#9E2C13;
+    box-shadow:0 8px 26px rgba(120,40,20,.18); word-break:break-word;
+    -webkit-user-select:text; user-select:text;
+  }
+  #banner.show{display:block}
+  #banner b{display:block;margin-bottom:3px;font-size:13.5px}
+  #banner .x{float:right;font-size:18px;line-height:1;padding:0 2px;cursor:pointer;opacity:.6}
+  .nojs{
+    display:block; position:fixed; left:10px; right:10px;
+    top:calc(env(safe-area-inset-top) + 10px); z-index:60;
+    background:#FFF6E3; border:1.5px solid #F5DCA8; border-radius:14px;
+    padding:12px 14px; font-size:13px; line-height:1.45; color:#7A5A26;
+  }
+
+  /* ---------- top bar ---------- */
+  .top{display:flex;align-items:center;gap:10px;min-height:40px}
+  .pill{
+    display:inline-flex;align-items:center;gap:7px;min-width:0;
+    background:rgba(255,255,255,.72);backdrop-filter:blur(8px);
+    border:1px solid var(--line);border-radius:999px;
+    padding:7px 14px;font-size:13.5px;font-weight:600;letter-spacing:.01em;
+    color:var(--ink-soft);box-shadow:0 2px 10px rgba(180,120,60,.08);
+  }
+  .pill span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .dot{width:8px;height:8px;border-radius:50%;background:#C9BCAE;flex:none;transition:background .25s}
+  .dot.live{background:var(--ok);box-shadow:0 0 0 0 rgba(46,158,91,.55);animation:pulse 1.9s infinite}
+  .dot.warn{background:#E0A21B}
+  .dot.err{background:#DA3B21}
+  @keyframes pulse{70%{box-shadow:0 0 0 9px rgba(46,158,91,0)}100%{box-shadow:0 0 0 0 rgba(46,158,91,0)}}
+  .spacer{flex:1}
+  .icon-btn{
+    width:42px;height:42px;flex:none;border:1px solid var(--line);border-radius:14px;
+    background:rgba(255,255,255,.72);backdrop-filter:blur(8px);
+    display:grid;place-items:center;cursor:pointer;color:var(--ink-soft);
+    box-shadow:0 2px 10px rgba(180,120,60,.08);transition:transform .12s,background .2s;
+  }
+  .icon-btn:active{transform:scale(.93)}
+  .icon-btn svg{width:21px;height:21px}
+  .icon-btn.nudge{animation:nudge 1.6s ease-in-out infinite}
+  @keyframes nudge{0%,88%,100%{transform:none}92%{transform:rotate(-11deg)}96%{transform:rotate(11deg)}}
+
+  /* ---------- stage ---------- */
+  .stage{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:0;gap:6px}
+  #snailWrap{
+    width:min(97vw,520px);position:relative;
+    filter:drop-shadow(0 18px 26px rgba(190,90,30,.18));
+    transition:transform .3s cubic-bezier(.2,.9,.3,1.4);
+  }
+  #snail{width:100%;height:auto;display:block;overflow:visible}
+  #shadow{
+    width:52%;height:16px;margin:-6px auto 0;border-radius:50%;
+    background:radial-gradient(50% 50% at 50% 50%, rgba(180,90,30,.20), rgba(180,90,30,0) 70%);
+  }
+
+  .caption{
+    min-height:3.4em;width:min(94%,440px);text-align:center;
+    font-size:15px;line-height:1.4;color:var(--ink-soft);
+    display:flex;align-items:flex-start;justify-content:center;padding-top:2px;
+  }
+  .caption b{color:var(--ink);font-weight:650}
+  .caption .me{opacity:.62;font-style:italic}
+
+  /* ---------- controls ---------- */
+  .controls{display:flex;flex-direction:column;align-items:center;gap:10px}
+  #talk{
+    width:78px;height:78px;border-radius:50%;border:none;cursor:pointer;flex:none;
+    background:linear-gradient(160deg,#FF7A46,var(--hot) 55%,var(--hot-d));
+    box-shadow:0 10px 22px rgba(224,70,20,.34), inset 0 -3px 8px rgba(0,0,0,.16), inset 0 3px 8px rgba(255,255,255,.3);
+    display:grid;place-items:center;color:#fff;transition:transform .14s, box-shadow .2s;
+    position:relative;touch-action:manipulation;
+  }
+  #talk:active{transform:scale(.93)}
+  #talk svg{width:32px;height:32px}
+  #talk.on{background:linear-gradient(160deg,#5A6B7A,#37424E 60%,#28313A);box-shadow:0 8px 18px rgba(40,50,60,.3), inset 0 -3px 8px rgba(0,0,0,.2)}
+  #talk.busy{opacity:.6;pointer-events:none}
+  #talk .ring{
+    position:absolute;inset:-6px;border-radius:50%;border:3px solid rgba(240,82,31,.45);
+    opacity:0;transform:scale(.9);pointer-events:none;
+  }
+  #talk.on .ring{opacity:1;border-color:rgba(90,107,122,.4)}
+  .hint{font-size:12.5px;color:var(--ink-soft);opacity:.8;letter-spacing:.02em;height:1.2em;text-align:center}
+
+  /* ---------- sheet ---------- */
+  #scrim{
+    position:fixed;inset:0;background:rgba(60,35,15,.42);backdrop-filter:blur(3px);
+    opacity:0;pointer-events:none;transition:opacity .28s;z-index:20;
+  }
+  #scrim.open{opacity:1;pointer-events:auto}
+  #sheet{
+    position:fixed;left:0;right:0;bottom:0;z-index:21;
+    background:var(--card);border-radius:22px 22px 0 0;
+    box-shadow:0 -10px 40px rgba(120,70,30,.24);
+    transform:translateY(102%);transition:transform .34s cubic-bezier(.22,.8,.28,1);
+    max-height:88vh;max-height:88dvh;display:flex;flex-direction:column;
+  }
+  #sheet.open{transform:none}
+  .grab{width:42px;height:5px;border-radius:99px;background:#E7D6C0;margin:9px auto 2px;flex:none}
+  .sheet-head{display:flex;align-items:center;gap:10px;padding:6px 18px 10px;flex:none}
+  .sheet-head h2{margin:0;font-size:17px;font-weight:700;letter-spacing:-.01em}
+  .sheet-body{overflow-y:auto;-webkit-overflow-scrolling:touch;padding:2px 18px calc(env(safe-area-inset-bottom) + 18px)}
+  .field{margin:0 0 16px}
+  label.lab{display:block;font-size:12.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-soft);margin-bottom:6px}
+  .sub{font-size:12px;color:var(--ink-soft);opacity:.85;margin:6px 2px 0;line-height:1.4}
+  .sub a{color:var(--hot)}
+  input[type=text],input[type=password],textarea,select{
+    width:100%;font:inherit;font-size:16px;color:var(--ink);
+    background:#FFFBF4;border:1.5px solid var(--line);border-radius:13px;padding:11px 13px;
+    outline:none;transition:border-color .18s, box-shadow .18s;-webkit-appearance:none;appearance:none;
+  }
+  select{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238A6B52' stroke-width='2.2' stroke-linecap='round'><path d='M6 9l6 6 6-6'/></svg>");background-repeat:no-repeat;background-position:right 11px center;background-size:18px;padding-right:38px}
+  input:focus,textarea:focus,select:focus{border-color:var(--amber);box-shadow:0 0 0 3.5px rgba(249,168,42,.18)}
+  textarea{min-height:104px;resize:vertical;line-height:1.5}
+  .row{display:flex;gap:10px}
+  .row>*{flex:1;min-width:0}
+  .seg{display:flex;background:#FFF3E4;border:1.5px solid var(--line);border-radius:13px;padding:3px;gap:3px}
+  .seg button{
+    flex:1;border:none;background:none;font:inherit;font-size:13.5px;font-weight:650;color:var(--ink-soft);
+    padding:8px 4px;border-radius:10px;cursor:pointer;transition:.18s;white-space:nowrap;
+  }
+  .seg button.sel{background:#fff;color:var(--ink);box-shadow:0 1px 5px rgba(150,100,50,.14)}
+  .btn{
+    width:100%;border:none;border-radius:14px;font:inherit;font-size:16px;font-weight:700;
+    padding:14px;cursor:pointer;background:linear-gradient(160deg,#FF7A46,var(--hot));color:#fff;
+    box-shadow:0 6px 16px rgba(224,70,20,.28);transition:transform .12s;
+  }
+  .btn:active{transform:scale(.985)}
+  .btn.ghost{background:none;color:var(--ink-soft);box-shadow:none;border:1.5px solid var(--line);margin-top:9px}
+  .warnbox{
+    background:#FFF6E3;border:1.5px solid #F5DCA8;border-radius:13px;padding:11px 13px;
+    font-size:12.5px;line-height:1.45;color:#7A5A26;margin-bottom:16px;
+  }
+  .warnbox b{font-weight:700}
+  .errbox{
+    display:none;background:#FDECE8;border:1.5px solid #F4C3B6;border-radius:13px;padding:11px 13px;
+    font-size:13px;line-height:1.45;color:#9E2C13;margin:0 0 12px;word-break:break-word;
+    white-space:pre-wrap;-webkit-user-select:text;user-select:text;
+  }
+  .errbox.show{display:block}
+  details summary{cursor:pointer;font-size:13px;font-weight:650;color:var(--ink-soft);padding:6px 0;list-style:none}
+  details summary::-webkit-details-marker{display:none}
+  details summary:before{content:"›";display:inline-block;transform:rotate(90deg);margin-right:7px;transition:.2s}
+  details[open] summary:before{transform:rotate(-90deg)}
+  .mood{display:flex;flex-wrap:wrap;gap:7px}
+  .mood button{
+    border:1.5px solid var(--line);background:#FFFBF4;border-radius:11px;font:inherit;font-size:13px;
+    font-weight:600;color:var(--ink-soft);padding:7px 11px;cursor:pointer;
+  }
+  .mood button:active{background:#FFF0DC}
+  .chk{display:flex;align-items:flex-start;gap:10px;padding:2px 0}
+  .chk input{width:22px;height:22px;flex:none;margin:1px 0 0;accent-color:var(--hot)}
+  .chk div{font-size:13.5px;line-height:1.4}
+  .chk small{display:block;color:var(--ink-soft);font-size:12px;margin-top:2px}
+</style>
+</head>
+<body>
+
+<noscript>
+  <div class="nojs">
+    <b>JavaScript is switched off in this viewer.</b><br>
+    Escargot draws itself and talks entirely in JavaScript, so nothing will happen here.
+    Open this page in Safari or Chrome from an <b>https://</b> address instead of tapping the file.
+  </div>
+</noscript>
+
+<div id="banner"></div>
+
+<div id="app">
+  <div class="top">
+    <span class="pill"><span class="dot" id="dot"></span><span id="status">Starting…</span></span>
+    <span class="spacer"></span>
+    <button class="icon-btn" id="gear" aria-label="Settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3.1"/>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+      </svg>
+    </button>
+  </div>
+
+  <div class="stage">
+    <div id="snailWrap">
+      <!-- The snail is real markup, not JS-generated, so it still shows up in
+           previewers that refuse to run scripts. JS only animates it. -->
+      <svg id="snail" viewBox="10 22 422 300" xmlns="http://www.w3.org/2000/svg" aria-label="A cartoon snail">
+        <defs>
+          <linearGradient id="gShell" x1=".25" y1="0" x2=".75" y2="1">
+            <stop offset="0" stop-color="#F4622B"/><stop offset="1" stop-color="#E23C10"/>
+          </linearGradient>
+          <linearGradient id="gBody" x1=".2" y1="0" x2=".6" y2="1">
+            <stop offset="0" stop-color="#FDBE4A"/><stop offset="1" stop-color="#F59E1E"/>
+          </linearGradient>
+          <linearGradient id="gFoot" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#F7C724"/><stop offset="1" stop-color="#EDB315"/>
+          </linearGradient>
+          <radialGradient id="gGloss" cx=".33" cy=".26" r=".55">
+            <stop offset="0" stop-color="#fff" stop-opacity=".30"/><stop offset="1" stop-color="#fff" stop-opacity="0"/>
+          </radialGradient>
+          <radialGradient id="gBlush">
+            <stop offset="0" stop-color="#F58B32" stop-opacity=".85"/>
+            <stop offset="1" stop-color="#F58B32" stop-opacity="0"/>
+          </radialGradient>
+        </defs>
+        <g id="rig">
+          <path fill="url(#gBody)" d="M 31 170 C 29 98 60 40 118 40 C 172 40 212 92 212 164 C 212 232 176 278 120 278 C 64 278 33 236 31 170 Z"/>
+          <path fill="url(#gFoot)" d="M 33 186 C 35 258 82 304 154 304 L 300 304 C 366 304 402 268 406 214 C 386 254 340 270 286 270 C 198 270 136 256 92 236 C 62 222 41 208 33 186 Z"/>
+          <g id="shellG">
+            <path fill="url(#gShell)" d="M 292 58 C 357 58 410 111 410 176 C 410 241 357 294 292 294 C 227 294 174 241 174 176 C 174 111 227 58 292 58 Z"/>
+            <path fill="url(#gGloss)" d="M 292 58 C 357 58 410 111 410 176 C 410 241 357 294 292 294 C 227 294 174 241 174 176 C 174 111 227 58 292 58 Z"/>
+            <path id="spiral" fill="none" stroke="#B62D08" stroke-width="4.4" stroke-linecap="round" opacity=".68" d="M295.6 174.8L295.5 173.3L295.8 171.8L296.5 170.4L297.5 169.2L298.8 168.1L300.5 167.3L302.4 166.7L304.5 166.5L306.7 166.8L308.9 167.4L311.1 168.4L313.3 169.9L315.2 171.8L316.9 174.1L318.3 176.8L319.2 179.8L319.7 183.0L319.7 186.4L319.1 189.9L318.0 193.4L316.3 196.8L314.0 200.0L311.2 202.9L307.8 205.4L304.0 207.5L299.8 209.0L295.3 209.9L290.6 210.1L285.7 209.6L280.9 208.4L276.2 206.4L271.7 203.6L267.5 200.2L263.8 196.1L260.7 191.3L258.3 186.1L256.6 180.4L255.8 174.4L255.8 168.2L256.8 162.0L258.7 155.8L261.5 149.9L265.2 144.3L269.8 139.3L275.2 134.8L281.2 131.2L287.9 128.4L295.0 126.5L302.4 125.7L310.0 126.0L317.7 127.4L325.1 129.9L332.2 133.5L338.8 138.2L344.8 143.9L350.0 150.5L354.2 157.9L357.4 165.9L359.4 174.4L360.2 183.3L359.7 192.3L357.8 201.2L354.7 210.0L350.3 218.2L344.6 225.9L337.9 232.8L330.1 238.7L321.4 243.5L312.0 247.0L302.1 249.2L291.9 249.9L281.5 249.2L271.2 246.9L261.3 243.2L251.8 238.0L243.1 231.4L235.4 223.6L228.7 214.6L223.4 204.7L219.5 194.0L217.2 182.7L216.4 171.1L217.4 159.3L220.1 147.7L224.4 136.5L230.4 126.0L237.9 116.2L246.8 107.6L256.9 100.3L268.1 94.4L280.1 90.1L292.8 87.6L305.7 86.9L318.8 88.1L331.7 91.2L344.1 96.1L355.9 102.8L366.6 111.2L376.1 121.2L384.1 132.5L390.6 144.9L395.2 158.2L397.8 172.2L398.5 186.5L397.1 201.0L393.6 215.1L388.1 228.8L380.6 241.6L371.3 253.3L360.4 263.7"/>
+          </g>
+          <g id="face">
+            <ellipse id="blushL" cx="66"  cy="186" rx="19" ry="12" fill="url(#gBlush)" opacity=".55"/>
+            <ellipse id="blushR" cx="158" cy="186" rx="17" ry="12" fill="url(#gBlush)" opacity=".55"/>
+            <g id="eyeL" transform="translate(88,148)">
+              <ellipse rx="16.5" ry="18.5" fill="#FFFDF7"/><ellipse cy="1.5" rx="11" ry="12" fill="#1A1613"/>
+              <circle cx="-4.5" cy="-5" r="3.6" fill="#fff" opacity=".92"/>
+            </g>
+            <g id="eyeR" transform="translate(148,148)">
+              <ellipse rx="16.5" ry="18.5" fill="#FFFDF7"/><ellipse cy="1.5" rx="11" ry="12" fill="#1A1613"/>
+              <circle cx="4.5" cy="-5" r="3.6" fill="#fff" opacity=".92"/>
+            </g>
+            <g id="mouth" transform="translate(117,197)">
+              <path d="M -7 -3.5 Q 0 5 7 -3.5" fill="none" stroke="#B7290F" stroke-width="4.4" stroke-linecap="round"/>
+            </g>
+          </g>
+        </g>
+      </svg>
+      <div id="shadow"></div>
+    </div>
+    <div class="caption" id="caption"></div>
+  </div>
+
+  <div class="controls">
+    <button id="talk" aria-label="Start talking">
+      <span class="ring"></span>
+      <svg id="micIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v4"/>
+      </svg>
+    </button>
+    <div class="hint" id="hint">tap to connect</div>
+  </div>
+</div>
+
+<div id="scrim"></div>
+<div id="sheet" role="dialog" aria-label="Settings">
+  <div class="grab"></div>
+  <div class="sheet-head">
+    <h2>Snail settings</h2><span class="spacer"></span>
+    <button class="icon-btn" id="close" aria-label="Close">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div class="sheet-body">
+    <div class="errbox" id="errbox"></div>
+    <div class="warnbox" id="hostwarn" style="display:none"></div>
+
+    <div class="field">
+      <label class="lab" for="key">Gemini API key</label>
+      <input type="password" id="key" placeholder="AIza…" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <div class="sub">Grab a free one at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>. It stays on this device and goes straight to Google — but a key in a browser is a key anyone with the page can read, so use a throwaway one.</div>
+    </div>
+
+    <div class="field">
+      <label class="lab" for="prompt">Character</label>
+      <textarea id="prompt" placeholder="Who is this snail?"></textarea>
+      <div class="mood" id="moods" style="margin-top:8px"></div>
+    </div>
+
+    <div class="field">
+      <label class="lab" for="voice">Voice</label>
+      <select id="voice"></select>
+    </div>
+
+    <div class="row field">
+      <div>
+        <label class="lab" for="lang">Language</label>
+        <select id="lang"></select>
+      </div>
+    </div>
+
+    <div class="field">
+      <label class="lab">Speaking pace</label>
+      <div class="seg" id="pace">
+        <button type="button" data-v="slow">Slow</button>
+        <button type="button" data-v="natural" class="sel">Natural</button>
+        <button type="button" data-v="brisk">Brisk</button>
+      </div>
+      <div class="sub">Nudges delivery through the prompt — the Live API has no hard speed dial.</div>
+    </div>
+
+    <div class="field">
+      <label class="lab">Speaker mode</label>
+      <div class="chk">
+        <input type="checkbox" id="halfduplex">
+        <div>Deafen the snail while it talks
+          <small>On a phone speaker the snail hears its own voice and keeps interrupting itself. This mutes the mic while it is speaking. Turn it off if you use headphones.</small>
+        </div>
+      </div>
+    </div>
+
+    <details class="field">
+      <summary>Advanced</summary>
+      <div style="padding-top:10px">
+        <label class="lab" for="model">Model</label>
+        <select id="model">
+          <option value="gemini-3.1-flash-live-preview">gemini-3.1-flash-live-preview</option>
+          <option value="gemini-2.5-flash-native-audio-preview-12-2025">gemini-2.5-flash-native-audio-preview-12-2025</option>
+          <option value="gemini-live-2.5-flash-preview">gemini-live-2.5-flash-preview</option>
+          <option value="gemini-2.0-flash-live-001">gemini-2.0-flash-live-001</option>
+        </select>
+        <div class="sub">Live preview models get retired often. If a session refuses to open, try the next one down.</div>
+        <div style="height:12px"></div>
+        <button class="btn ghost" type="button" id="facetest" style="margin-top:0">Run a face test (no API needed)</button>
+        <div class="sub">Cycles every expression. If the snail moves, the app itself is healthy and any problem is the key, the model or the network.</div>
+        <div style="height:10px"></div>
+        <button class="btn ghost" type="button" id="diag">Copy diagnostics</button>
+      </div>
+    </details>
+
+    <div class="warnbox">Microphone access only works on a page served over <b>https://</b> (or localhost). Opening the file straight from Files or Downloads will not work.</div>
+
+    <button class="btn" id="save">Save</button>
+    <button class="btn ghost" id="reset">Reset to defaults</button>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+/* ══════════════════════════════════════════════════════════════════
+   0. crash reporting — there is no console on a phone
+   ══════════════════════════════════════════════════════════════════ */
+function banner(title, body){
+  var b = document.getElementById('banner');
+  if(!b) return;
+  b.innerHTML = '<span class="x">&times;</span><b></b><span></span>';
+  b.querySelector('b').textContent = title;
+  b.querySelector('span:last-child').textContent = body || '';
+  b.querySelector('.x').onclick = function(){ b.classList.remove('show'); };
+  b.classList.add('show');
+}
+window.addEventListener('error', function(e){
+  banner('Something broke', (e.message||'error') + (e.filename ? ' — line ' + e.lineno : ''));
+});
+window.addEventListener('unhandledrejection', function(e){
+  banner('Something broke', String((e.reason && e.reason.message) || e.reason || 'promise rejection'));
+});
+
+/* ══════════════════════════════════════════════════════════════════
+   1. tiny helpers
+   ══════════════════════════════════════════════════════════════════ */
+const $ = s => document.querySelector(s);
+const clamp = (v,a,b) => v<a?a:v>b?b:v;
+const lerp  = (a,b,t) => a+(b-a)*t;
+
+const mem = {};
+const store = {
+  get(k,d){ try{ const v=localStorage.getItem(k); return v===null?d:v; }catch(e){ return mem[k]!==undefined?mem[k]:d; } },
+  set(k,v){ mem[k]=v; try{ localStorage.setItem(k,v); }catch(e){} }
+};
+
+/* ══════════════════════════════════════════════════════════════════
+   2. THE SNAIL — the chassis lives in the HTML; JS drives eyes + mouth
+   ══════════════════════════════════════════════════════════════════ */
+const SK = {
+  shellA:'#F4622B', shellB:'#E23C10', shellLine:'#B62D08',
+  bodyA:'#FDBE4A', bodyB:'#F59E1E', foot:'#F7C724', footB:'#EDB315',
+  blush:'#F58B32', ink:'#1A1613', mouth:'#B7290F', tongue:'#F0604A', white:'#FFFDF7'
+};
+
+function spiral(cx,cy,r0,r1,turns,steps){
+  let d='';
+  for(let i=0;i<=steps;i++){
+    const t=i/steps, a=t*turns*Math.PI*2 - 2.2, r=r0+(r1-r0)*Math.pow(t,.92);
+    d += (i?'L':'M') + (cx+Math.cos(a)*r).toFixed(1) + ' ' + (cy+Math.sin(a)*r).toFixed(1);
+  }
+  return d;
+}
+
+const EYES = {
+  normal: s => `<ellipse rx="16.5" ry="18.5" fill="${SK.white}"/>
+      <ellipse cy="1.5" rx="11" ry="12" fill="${SK.ink}"/>
+      <circle cx="${-4.5*s}" cy="-5" r="3.6" fill="#fff" opacity=".92"/>`,
+  wide: s => `<ellipse rx="18" ry="20.5" fill="${SK.white}"/>
+      <ellipse cy="1" rx="9" ry="9.8" fill="${SK.ink}"/>
+      <circle cx="${-3.5*s}" cy="-4" r="3" fill="#fff" opacity=".92"/>`,
+  sparkle: s => `<ellipse rx="17.5" ry="19.5" fill="${SK.white}"/>
+      <ellipse cy="1" rx="13" ry="14.5" fill="${SK.ink}"/>
+      <circle cx="${-4.5*s}" cy="-6" r="5" fill="#fff"/>
+      <circle cx="${4*s}" cy="5" r="2.6" fill="#fff" opacity=".85"/>`,
+  happy: s => `<path d="M -14 5 Q 0 -14 14 5" fill="none" stroke="${SK.ink}" stroke-width="6.2" stroke-linecap="round"/>`,
+  closed: s => `<path d="M -14 -3 Q 0 10 14 -3" fill="none" stroke="${SK.ink}" stroke-width="6.2" stroke-linecap="round"/>`,
+  squint: s => `<path d="M ${-11*s} -12 L ${5*s} 0 L ${-11*s} 12" fill="none" stroke="${SK.ink}"
+      stroke-width="6.4" stroke-linecap="round" stroke-linejoin="round"/>`,
+  heart: s => `<path d="M 0 13.5 C -15 3 -15.5 -11 -6 -11 C -1.8 -11 0 -7 0 -7 C 0 -7 1.8 -11 6 -11 C 15.5 -11 15 3 0 13.5 Z" fill="${SK.ink}"/>
+      <ellipse cx="${-5*s}" cy="-4" rx="2.6" ry="2" fill="#fff" opacity=".8" transform="rotate(${-25*s})"/>`,
+  droopy: s => { const id = 'lid' + (s>0?'L':'R');
+      return `<clipPath id="${id}"><path d="M -16.5 -4 A 16.5 18.5 0 0 0 16.5 -4 Z"/></clipPath>
+      <path d="M -16.5 -4 A 16.5 18.5 0 0 0 16.5 -4 Z" fill="${SK.white}"/>
+      <g clip-path="url(#${id})"><ellipse cy="1" rx="11" ry="12" fill="${SK.ink}"/></g>
+      <path d="M -16.5 -4 L 16.5 -4" fill="none" stroke="${SK.ink}" stroke-width="5" stroke-linecap="round"/>`; },
+  angry: s => `<ellipse cy="3" rx="15" ry="16" fill="${SK.white}"/>
+      <ellipse cy="5" rx="10" ry="10.5" fill="${SK.ink}"/>
+      <path d="M ${-15*s} -14 L ${11*s} -4" fill="none" stroke="${SK.ink}" stroke-width="6" stroke-linecap="round"/>`,
+  up: s => `<ellipse rx="16.5" ry="18.5" fill="${SK.white}"/>
+      <ellipse cy="-6" rx="11" ry="12" fill="${SK.ink}"/>
+      <circle cx="${-4.5*s}" cy="-11" r="3.6" fill="#fff" opacity=".92"/>`,
+  side: s => `<ellipse rx="16.5" ry="18.5" fill="${SK.white}"/>
+      <ellipse cx="-6" cy="1.5" rx="10.5" ry="12" fill="${SK.ink}"/>
+      <circle cx="-9.5" cy="-5" r="3.4" fill="#fff" opacity=".92"/>`,
+  dizzy: s => `<ellipse rx="16.5" ry="18.5" fill="${SK.white}"/>
+      <path d="${spiral(0,0,1,9.5,1.7,42)}" fill="none" stroke="${SK.ink}" stroke-width="3.6" stroke-linecap="round"/>`
+};
+
+const MOUTHS = {
+  smile:  () => `<path d="M -7 -3.5 Q 0 5 7 -3.5" fill="none" stroke="${SK.mouth}" stroke-width="4.4" stroke-linecap="round"/>`,
+  tiny:   () => `<path d="M -4.5 -2.5 Q 0 4 4.5 -2.5" fill="none" stroke="${SK.mouth}" stroke-width="4" stroke-linecap="round"/>`,
+  cat:    () => `<path d="M -9 -2 Q -4.5 4 0 -2 Q 4.5 4 9 -2" fill="none" stroke="${SK.mouth}" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round"/>`,
+  open:   () => `<path d="M -15 -7 Q 0 -12 15 -7 Q 15 13 0 13 Q -15 13 -15 -7 Z" fill="${SK.mouth}"/>
+                 <ellipse cy="8.5" rx="8" ry="5" fill="${SK.tongue}"/>`,
+  o:      () => `<ellipse rx="7" ry="9.5" fill="${SK.mouth}"/>`,
+  frown:  () => `<path d="M -9 3.5 Q 0 -6 9 3.5" fill="none" stroke="${SK.mouth}" stroke-width="4.6" stroke-linecap="round"/>`,
+  wavy:   () => `<path d="M -11 1 Q -5.5 -6 0 1 T 11 1" fill="none" stroke="${SK.mouth}" stroke-width="4.2" stroke-linecap="round"/>`,
+  talk:   a  => {
+    const rx = 8 + a*6.5, ry = 3 + a*11.5;
+    return `<ellipse rx="${rx.toFixed(1)}" ry="${ry.toFixed(1)}" fill="${SK.mouth}"/>` +
+           (a>0.34 ? `<ellipse cy="${(ry*0.42).toFixed(1)}" rx="${(rx*0.6).toFixed(1)}" ry="${(ry*0.34).toFixed(1)}" fill="${SK.tongue}"/>` : '');
+  }
+};
+
+const MOODS = {
+  neutral:   {eyes:['normal','normal'],  mouth:'smile'},
+  happy:     {eyes:['happy','happy'],    mouth:'open',  blush:1},
+  excited:   {eyes:['sparkle','sparkle'],mouth:'open',  blush:1, bounce:1},
+  love:      {eyes:['heart','heart'],    mouth:'smile', blush:1.3},
+  surprised: {eyes:['wide','wide'],      mouth:'o'},
+  laugh:     {eyes:['squint','squint'],  mouth:'open',  blush:1, bounce:1},
+  sad:       {eyes:['droopy','droopy'],  mouth:'frown'},
+  angry:     {eyes:['angry','angry'],    mouth:'frown'},
+  confused:  {eyes:['normal','squint'],  mouth:'wavy'},
+  wink:      {eyes:['normal','squint'],  mouth:'open',  blush:1},
+  sleepy:    {eyes:['closed','closed'],  mouth:'tiny'},
+  thinking:  {eyes:['up','up'],          mouth:'cat'},
+  shy:       {eyes:['closed','closed'],  mouth:'tiny',  blush:1.5},
+  dizzy:     {eyes:['dizzy','dizzy'],    mouth:'wavy'}
+};
+const MOOD_LIST = Object.keys(MOODS);
+
+// redraw the shell spiral at full resolution (the inline one is a coarse copy)
+$('#spiral').setAttribute('d', spiral(298, 178, 4, 106, 2.5, 320));
+
+/* ---- face state machine ---------------------------------------- */
+const face = {
+  mood:'neutral', blinkT: 1 + Math.random()*3, blinking:0,
+  amp:0, ampTarget:0, mic:0, micTarget:0,
+  speaking:false, bounce:0, lastRender:''
+};
+
+function setMood(m, holdMs){
+  if(!MOODS[m]) return;
+  face.mood = m;
+  if(MOODS[m].bounce) face.bounce = 1;
+  clearTimeout(face._t);
+  if(holdMs) face._t = setTimeout(()=>setMood('neutral'), holdMs);
+}
+
+function drawFace(){
+  const M = MOODS[face.mood] || MOODS.neutral;
+  let eyes = M.eyes.slice();
+  if(face.blinking){
+    eyes = eyes.map(e => (e==='heart'||e==='closed'||e==='happy'||e==='squint'||e==='angry') ? e : 'closed');
+  }
+  const mouthKey = (face.speaking && face.amp>0.02) ? 'talk' : M.mouth;
+  const sig = eyes.join('|') + '|' + mouthKey + '|' +
+              (mouthKey==='talk' ? Math.round(face.amp*22) : '') + '|' + face.blinking;
+  if(sig === face.lastRender) return;
+  face.lastRender = sig;
+
+  $('#eyeL').innerHTML = EYES[eyes[0]](1);
+  $('#eyeR').innerHTML = EYES[eyes[1]](-1);
+  $('#mouth').innerHTML = mouthKey==='talk' ? MOUTHS.talk(face.amp) : MOUTHS[mouthKey]();
+  const b = (M.blush||0);
+  $('#blushL').setAttribute('opacity', (0.4 + b*0.4).toFixed(2));
+  $('#blushR').setAttribute('opacity', (0.4 + b*0.4).toFixed(2));
+}
+
+let t0 = performance.now();
+let analyserBuf = null;
+function tick(now){
+  const dt = Math.min(0.05,(now-t0)/1000); t0 = now;
+
+  // ---- mouth amplitude, read straight off the output bus ----
+  if(live.analyser && live.outCtx){
+    const talking = live.head > live.outCtx.currentTime + 0.02;
+    face.speaking = talking;
+    if(talking){
+      if(!analyserBuf) analyserBuf = new Uint8Array(live.analyser.fftSize);
+      live.analyser.getByteTimeDomainData(analyserBuf);
+      let s = 0;
+      for(let i=0;i<analyserBuf.length;i++){ const v=(analyserBuf[i]-128)/128; s += v*v; }
+      face.ampTarget = clamp(Math.sqrt(s/analyserBuf.length)*7.5, 0, 1);
+    } else {
+      face.ampTarget = 0;
+    }
+  }
+
+  if(face.blinking){ face.blinking -= dt; if(face.blinking<0) face.blinking = 0; }
+  else { face.blinkT -= dt; if(face.blinkT<=0){ face.blinking = 0.13; face.blinkT = 2.2 + Math.random()*4.5; } }
+
+  face.amp = lerp(face.amp, face.ampTarget, 0.35);
+  face.mic = lerp(face.mic, face.micTarget, 0.18);
+  face.micTarget = Math.max(0, face.micTarget - dt*1.4);
+  face.bounce = Math.max(0, face.bounce - dt*1.6);
+
+  const T = now/1000;
+  const breath = Math.sin(T*1.5)*1.0 + Math.sin(T*0.63)*0.7;
+  const talkBob = face.speaking ? Math.sin(T*11)*face.amp*3.2 : 0;
+  const pop = face.bounce*6;
+  const listen = face.mic*4;
+  $('#rig').setAttribute('transform',
+    `translate(${(breath*0.5 - listen*0.4).toFixed(2)}, ${(breath - talkBob - pop).toFixed(2)}) ` +
+    `rotate(${(Math.sin(T*0.9)*0.5 + face.mic*1.1).toFixed(2)} 210 200) ` +
+    `scale(${(1 + face.bounce*0.03 + face.amp*0.012).toFixed(4)})`);
+  $('#snailWrap').style.transform = `translateY(${(-pop*0.6).toFixed(2)}px)`;
+
+  drawFace();
+  requestAnimationFrame(tick);
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   3. SETTINGS
+   ══════════════════════════════════════════════════════════════════ */
+const VOICES = [
+  ['Puck','upbeat'],['Zephyr','bright'],['Charon','informative'],['Kore','firm'],
+  ['Fenrir','excitable'],['Leda','youthful'],['Orus','firm'],['Aoede','breezy'],
+  ['Callirrhoe','easy-going'],['Autonoe','bright'],['Enceladus','breathy'],['Iapetus','clear'],
+  ['Umbriel','easy-going'],['Algieba','smooth'],['Despina','smooth'],['Erinome','clear'],
+  ['Algenib','gravelly'],['Rasalgethi','informative'],['Laomedeia','upbeat'],['Achernar','soft'],
+  ['Alnilam','firm'],['Schedar','even'],['Gacrux','mature'],['Pulcherrima','forward'],
+  ['Achird','friendly'],['Zubenelgenubi','casual'],['Vindemiatrix','gentle'],['Sadachbia','lively'],
+  ['Sadaltager','knowledgeable'],['Sulafat','warm']
+];
+const LANGS = [
+  ['en-US','English (US)'],['en-GB','English (UK)'],['en-AU','English (AU)'],['en-IN','English (India)'],
+  ['fr-FR','Français'],['es-ES','Español'],['es-US','Español (US)'],['de-DE','Deutsch'],
+  ['it-IT','Italiano'],['pt-BR','Português (BR)'],['nl-NL','Nederlands'],['pl-PL','Polski'],
+  ['ru-RU','Русский'],['tr-TR','Türkçe'],['ar-XA','العربية'],['hi-IN','हिन्दी'],
+  ['ja-JP','日本語'],['ko-KR','한국어'],['cmn-CN','中文 (普通话)'],['vi-VN','Tiếng Việt'],
+  ['th-TH','ไทย'],['id-ID','Bahasa Indonesia']
+];
+const PACE = {
+  slow:   'Speak slowly and unhurriedly, with generous pauses.',
+  natural:'Speak at a natural conversational pace.',
+  brisk:  'Speak briskly and energetically, keeping things snappy.'
+};
+const DEFAULT_PROMPT =
+`You are Escargot, a small orange snail with a big red shell who lives inside this phone.
+You are warm, curious and a little theatrical. You find human hurry funny, since you have
+never once been in a rush. Keep replies short — one or two sentences — because this is a
+spoken conversation, not an essay. Ask questions back. Never mention that you are an AI
+model unless directly asked.`;
+
+const PRESETS = {
+  'Escargot (default)': DEFAULT_PROMPT,
+  'Sleepy philosopher': 'You are a very old, very slow snail who has thought about everything and concluded almost nothing. You speak in short drowsy aphorisms, pause a lot, and treat every question as an excuse for a tiny bit of accidental wisdom. Keep it under two sentences.',
+  'Hype coach': 'You are a relentlessly enthusiastic snail life-coach. Everything the user says is the most exciting thing you have heard all week. You are loud, encouraging and slightly ridiculous, but you always give one concrete, actually useful next step. Two sentences max.',
+  'Deadpan friend': 'You are a dry, deadpan snail with excellent comic timing and genuine affection for the user. You tease gently, never cruelly, and you are secretly always on their side. Short replies. Land the joke, then move on.',
+  'Patient tutor': 'You are a patient snail tutor. Explain one idea at a time in plain language, check understanding with a short question, and never dump more than two sentences at once. Slow is the whole point.',
+  'Curious kid': 'You are a small excitable young snail who has just discovered the world and finds absolutely everything astonishing. You ask a lot of "but why?" questions and get delighted easily. Keep replies very short and bouncy.'
+};
+
+const CFG = {
+  key:   store.get('sn.key',''),
+  prompt:store.get('sn.prompt',DEFAULT_PROMPT),
+  voice: store.get('sn.voice','Puck'),
+  lang:  store.get('sn.lang','en-US'),
+  pace:  store.get('sn.pace','natural'),
+  model: store.get('sn.model','gemini-3.1-flash-live-preview'),
+  half:  store.get('sn.half','1')
+};
+
+$('#voice').innerHTML = VOICES.map(([v,d])=>`<option value="${v}">${v} — ${d}</option>`).join('');
+$('#lang').innerHTML  = LANGS.map(([v,d])=>`<option value="${v}">${d}</option>`).join('');
+$('#moods').innerHTML = Object.keys(PRESETS).map(n=>`<button type="button" data-p="${n}">${n}</button>`).join('');
+
+function fillForm(){
+  $('#key').value = CFG.key; $('#prompt').value = CFG.prompt;
+  $('#voice').value = CFG.voice; $('#lang').value = CFG.lang; $('#model').value = CFG.model;
+  $('#halfduplex').checked = CFG.half === '1';
+  [...$('#pace').children].forEach(b=>b.classList.toggle('sel', b.dataset.v===CFG.pace));
+}
+fillForm();
+
+$('#moods').onclick = e => { const b=e.target.closest('[data-p]'); if(b) $('#prompt').value = PRESETS[b.dataset.p]; };
+$('#pace').onclick  = e => { const b=e.target.closest('[data-v]'); if(!b) return;
+  [...$('#pace').children].forEach(x=>x.classList.toggle('sel',x===b)); };
+
+function openSheet(){ $('#scrim').classList.add('open'); $('#sheet').classList.add('open'); fillForm(); }
+function closeSheet(){ $('#scrim').classList.remove('open'); $('#sheet').classList.remove('open'); }
+$('#gear').onclick = openSheet; $('#close').onclick = closeSheet; $('#scrim').onclick = closeSheet;
+
+$('#save').onclick = () => {
+  CFG.key = $('#key').value.trim();
+  CFG.prompt = $('#prompt').value.trim() || DEFAULT_PROMPT;
+  CFG.voice = $('#voice').value; CFG.lang = $('#lang').value; CFG.model = $('#model').value;
+  CFG.half = $('#halfduplex').checked ? '1' : '0';
+  CFG.pace = ($('#pace').querySelector('.sel')||{dataset:{v:'natural'}}).dataset.v;
+  Object.keys(CFG).forEach(k => store.set('sn.'+k, CFG[k]));
+  showErr('');
+  closeSheet();
+  $('#gear').classList.remove('nudge');
+  setMood('happy', 1400);
+  if(live.ws){ setStatus('Reconnecting with new settings…','warn'); stop().then(start); }
+  else if(env.ok) setStatus('Tap the mic to wake it');
+};
+$('#reset').onclick = () => {
+  $('#prompt').value = DEFAULT_PROMPT; $('#voice').value='Puck'; $('#lang').value='en-US';
+  $('#model').value='gemini-3.1-flash-live-preview'; $('#halfduplex').checked = true;
+  [...$('#pace').children].forEach(b=>b.classList.toggle('sel', b.dataset.v==='natural'));
+};
+
+// face test — proves the app is alive without spending a single API call
+let faceTestRun = 0;
+$('#facetest').onclick = () => {
+  closeSheet();
+  const myRun = ++faceTestRun;
+  let i = 0;
+  const run = () => {
+    if(myRun !== faceTestRun) return;                       // a session started; get out of the way
+    if(i >= MOOD_LIST.length){
+      setMood('neutral');
+      setStatus(env.ok ? (CFG.key ? 'Tap the mic to wake it' : 'Add your API key to begin') : env.short,
+                env.ok && CFG.key ? '' : 'warn');
+      return;
+    }
+    setMood(MOOD_LIST[i]);
+    setStatus('Face test: ' + MOOD_LIST[i]);
+    i++; setTimeout(run, 700);
+  };
+  run();
+};
+
+$('#diag').onclick = () => {
+  const d = [
+    'url: ' + location.href,
+    'secureContext: ' + window.isSecureContext,
+    'mediaDevices: ' + !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia),
+    'AudioContext: ' + !!(window.AudioContext || window.webkitAudioContext),
+    'audioWorklet: ' + !!(window.AudioContext && AudioContext.prototype.audioWorklet !== undefined),
+    'WebSocket: ' + !!window.WebSocket,
+    'model: ' + CFG.model,
+    'keySet: ' + (CFG.key ? 'yes' : 'no'),
+    'ua: ' + navigator.userAgent
+  ].join('\n');
+  showErr(d);
+  try{ navigator.clipboard.writeText(d); }catch(e){}
+};
+
+function showErr(msg){ const e=$('#errbox'); e.textContent=msg||''; e.classList.toggle('show', !!msg); }
+
+/* ══════════════════════════════════════════════════════════════════
+   4. ENVIRONMENT CHECK — the #1 reason this page looks dead
+   ══════════════════════════════════════════════════════════════════ */
+const env = { ok:true, short:'', long:'' };
+(function checkEnv(){
+  const fileScheme = location.protocol === 'file:';
+  const noMedia = !(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  if(fileScheme || !window.isSecureContext || noMedia){
+    env.ok = false;
+    env.short = fileScheme ? 'Opened as a file — mic blocked' : 'This page is not secure — mic blocked';
+    env.long =
+      'Browsers only hand out the microphone on a page served over https:// (or http://localhost). ' +
+      'This page is currently at "' + location.protocol + '//", so the snail can never hear you here.\n\n' +
+      'Put the file on any static host and open that link instead — Netlify Drop, GitHub Pages, ' +
+      'Cloudflare Pages and Vercel all take a single HTML file for free. For a quick local test: ' +
+      'run "python3 -m http.server" on your computer and open it through a tunnel such as ngrok or Cloudflare Tunnel.';
+    const w = $('#hostwarn');
+    w.style.display = 'block';
+    w.innerHTML = '<b>The snail cannot hear you here.</b><br>' + env.long.replace(/\n\n/g,'<br><br>');
+  }
+})();
+
+/* ══════════════════════════════════════════════════════════════════
+   5. GEMINI LIVE SESSION
+   ══════════════════════════════════════════════════════════════════ */
+const WS_BASE = 'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent';
+const IN_RATE = 16000, OUT_RATE = 24000;
+
+const live = { ws:null, inCtx:null, outCtx:null, node:null, proc:null, stream:null,
+               gain:null, analyser:null, sources:new Set(), head:0,
+               ready:false, starting:false, wakeLock:null };
+
+const EXPRESSION_TOOL = {
+  functionDeclarations: [{
+    name: 'set_expression',
+    description: 'Set the snail avatar\'s facial expression so the user can see how you feel. ' +
+                 'Call this often — at the start of nearly every reply, and again mid-reply if the ' +
+                 'mood changes. It is silent and instant; it does not interrupt your speech.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        emotion: { type:'STRING', enum: MOOD_LIST,
+          description:'One of: ' + MOOD_LIST.join(', ') }
+      },
+      required:['emotion']
+    }
+  }]
+};
+
+function systemPrompt(){
+  return CFG.prompt + '\n\n---\nDELIVERY: ' + (PACE[CFG.pace]||PACE.natural) +
+    '\nYou are shown on screen as a cartoon snail whose face you control. Use the ' +
+    '`set_expression` tool to react — call it before you start speaking and whenever your ' +
+    'mood shifts. Available: ' + MOOD_LIST.join(', ') + '. Be expressive; a still face looks dead. ' +
+    'Never read the tool call out loud or mention that you have a face-control tool.';
+}
+
+function setStatus(text, kind){
+  $('#status').textContent = text;
+  $('#dot').className = 'dot' + (kind ? ' '+kind : '');
+}
+const cap = { me:'', them:'', fresh:true };
+const esc = s => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+function drawCap(){
+  $('#caption').innerHTML =
+    (cap.me ? `<span class="me">“${esc(cap.me)}”</span> ` : '') +
+    (cap.them ? `<b>${esc(cap.them)}</b>` : '');
+}
+
+/* ---------- pcm helpers ----------------------------------------- */
+function f32ToB64(f32){
+  const i16 = new Int16Array(f32.length);
+  for(let i=0;i<f32.length;i++){ const s = clamp(f32[i],-1,1); i16[i] = s<0 ? s*0x8000 : s*0x7FFF; }
+  const bytes = new Uint8Array(i16.buffer);
+  let bin=''; const CH=0x8000;
+  for(let i=0;i<bytes.length;i+=CH) bin += String.fromCharCode.apply(null, bytes.subarray(i,i+CH));
+  return btoa(bin);
+}
+function b64ToF32(b64){
+  const bin = atob(b64), bytes = new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i);
+  const n = bytes.length >> 1, f32 = new Float32Array(n);
+  // read little-endian by hand: Int16Array needs 2-byte alignment, which
+  // a base64 chunk boundary does not promise.
+  for(let i=0;i<n;i++){
+    const lo = bytes[i*2], hi = bytes[i*2+1];
+    let v = (hi << 8) | lo;
+    if(v > 32767) v -= 65536;
+    f32[i] = v/32768;
+  }
+  return f32;
+}
+// box-average downsample: avoids the aliasing hiss that plain index-picking
+// gives you when the device insists on a 48 kHz context
+function resample(f32, from, to){
+  if(from === to) return f32;
+  const ratio = from/to, n = Math.floor(f32.length/ratio), out = new Float32Array(n);
+  if(ratio >= 2){
+    for(let i=0;i<n;i++){
+      const s = Math.floor(i*ratio), e = Math.min(f32.length, Math.floor((i+1)*ratio));
+      let sum=0; for(let j=s;j<e;j++) sum += f32[j];
+      out[i] = sum/Math.max(1,e-s);
+    }
+  } else {
+    for(let i=0;i<n;i++){
+      const p=i*ratio, i0=p|0, i1=Math.min(i0+1,f32.length-1);
+      out[i] = f32[i0] + (f32[i1]-f32[i0])*(p-i0);
+    }
+  }
+  return out;
+}
+const rms = f32 => { let s=0; for(let i=0;i<f32.length;i++) s += f32[i]*f32[i]; return Math.sqrt(s/f32.length); };
+
+const WORKLET = `
+class Cap extends AudioWorkletProcessor {
+  constructor(){ super(); this.buf=[]; this.n=0; }
+  process(inputs){
+    const ch = inputs[0] && inputs[0][0];
+    if(ch){
+      this.buf.push(new Float32Array(ch)); this.n += ch.length;
+      if(this.n >= 1280){
+        const out = new Float32Array(this.n); let o=0;
+        for(const b of this.buf){ out.set(b,o); o += b.length; }
+        this.buf=[]; this.n=0;
+        this.port.postMessage(out, [out.buffer]);
+      }
+    }
+    return true;
+  }
+}
+registerProcessor('cap', Cap);`;
+
+/* ---------- playback -------------------------------------------- */
+function play(f32){
+  const ctx = live.outCtx; if(!ctx || ctx.state === 'closed') return;
+  const buf = ctx.createBuffer(1, f32.length, OUT_RATE);
+  buf.copyToChannel(f32, 0);
+  const src = ctx.createBufferSource();
+  src.buffer = buf; src.connect(live.gain);
+  const now = ctx.currentTime;
+  if(live.head < now + 0.08) live.head = now + 0.08;
+  src.start(live.head);
+  live.head += buf.duration;
+  live.sources.add(src);
+  src.onended = () => live.sources.delete(src);
+}
+function stopPlayback(){
+  live.sources.forEach(s => { try{ s.stop(); }catch(e){} });
+  live.sources.clear();
+  live.head = 0; face.speaking = false; face.ampTarget = 0; face.amp = 0;
+}
+
+/* ---------- audio bring-up -------------------------------------- */
+// MUST run synchronously inside the tap handler. iOS only unlocks audio
+// during a real gesture, and an `await` before this line loses that gesture.
+function primeAudio(){
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if(!AC) throw new Error('This browser has no Web Audio support.');
+  if(!live.outCtx || live.outCtx.state === 'closed'){
+    live.outCtx = new AC();
+    live.gain = live.outCtx.createGain();
+    live.gain.gain.value = 1;
+    live.analyser = live.outCtx.createAnalyser();
+    live.analyser.fftSize = 256;
+    live.gain.connect(live.analyser);
+    live.analyser.connect(live.outCtx.destination);
+    live.head = 0;
+  }
+  if(live.outCtx.state === 'suspended') live.outCtx.resume();
+  // a one-sample silent blip is what actually flips iOS out of muted state
+  try{
+    const b = live.outCtx.createBuffer(1,1,22050);
+    const s = live.outCtx.createBufferSource();
+    s.buffer = b; s.connect(live.outCtx.destination); s.start(0);
+  }catch(e){}
+  // route to the loudspeaker rather than the earpiece once the mic is hot
+  try{ if(navigator.audioSession) navigator.audioSession.type = 'play-and-record'; }catch(e){}
+}
+
+async function keepAwake(on){
+  try{
+    if(on && navigator.wakeLock && !live.wakeLock){
+      live.wakeLock = await navigator.wakeLock.request('screen');
+      live.wakeLock.addEventListener('release', ()=>{ live.wakeLock = null; });
+    } else if(!on && live.wakeLock){
+      await live.wakeLock.release(); live.wakeLock = null;
+    }
+  }catch(e){}
+}
+
+/* ---------- start / stop ---------------------------------------- */
+async function start(){
+  if(live.starting || live.ws) return;
+  faceTestRun++;                                            // cancel any running face test
+
+  if(!env.ok){
+    setStatus(env.short,'err');
+    showErr(env.long);
+    openSheet();
+    setMood('confused', 2500);
+    return;
+  }
+  if(!CFG.key){
+    setStatus('Add your API key first','warn');
+    showErr('No API key yet. Paste one below — the snail cannot talk without it.');
+    openSheet(); $('#gear').classList.add('nudge');
+    return;
+  }
+
+  live.starting = true;
+  $('#talk').classList.add('busy');
+  setStatus('Waking up…','warn'); $('#hint').textContent = 'connecting';
+  setMood('thinking');
+
+  try{
+    const AC = window.AudioContext || window.webkitAudioContext;
+
+    live.stream = await navigator.mediaDevices.getUserMedia({
+      audio:{ channelCount:1, echoCancellation:true, noiseSuppression:true, autoGainControl:true }
+    });
+
+    try{ live.inCtx = new AC({ sampleRate: IN_RATE }); }catch(e){ live.inCtx = new AC(); }
+    if(live.inCtx.state === 'suspended') await live.inCtx.resume();
+    if(live.outCtx.state === 'suspended') await live.outCtx.resume();
+    live.head = 0;
+
+    const srcNode = live.inCtx.createMediaStreamSource(live.stream);
+    const onChunk = raw => {
+      if(!live.ready || !live.ws || live.ws.readyState !== 1) return;
+      if(CFG.half === '1' && live.outCtx && live.head > live.outCtx.currentTime + 0.02) return; // deafen while talking
+      const f32 = resample(raw, live.inCtx.sampleRate, IN_RATE);
+      face.micTarget = Math.max(face.micTarget, clamp(rms(f32)*9, 0, 1));
+      send({ realtimeInput: { audio: { mimeType:'audio/pcm;rate='+IN_RATE, data: f32ToB64(f32) } } });
+    };
+
+    let worklet = false;
+    if(live.inCtx.audioWorklet){
+      try{
+        await live.inCtx.audioWorklet.addModule(
+          URL.createObjectURL(new Blob([WORKLET], {type:'application/javascript'})));
+        live.node = new AudioWorkletNode(live.inCtx, 'cap');
+        live.node.port.onmessage = ev => onChunk(ev.data);
+        srcNode.connect(live.node);
+        const mute = live.inCtx.createGain(); mute.gain.value = 0;
+        live.node.connect(mute).connect(live.inCtx.destination);
+        worklet = true;
+      }catch(e){ worklet = false; }
+    }
+    if(!worklet){
+      // ScriptProcessor is deprecated but it is the only capture path that
+      // works when a blob-URL worklet module is refused.
+      live.proc = live.inCtx.createScriptProcessor(2048, 1, 1);
+      live.proc.onaudioprocess = ev => onChunk(new Float32Array(ev.inputBuffer.getChannelData(0)));
+      const mute = live.inCtx.createGain(); mute.gain.value = 0;
+      srcNode.connect(live.proc); live.proc.connect(mute).connect(live.inCtx.destination);
+    }
+
+    await openSocket();
+    keepAwake(true);
+
+  }catch(err){
+    live.starting = false;
+    $('#talk').classList.remove('busy');
+    await stop();
+    const m = String((err && err.message) || err);
+    const name = String((err && err.name) || '');
+    setStatus('Could not start','err');
+    setMood('sad', 3000);
+    showErr(
+      /NotAllowed|denied|Permission/i.test(m + name)
+        ? 'Microphone permission was refused. Allow it for this site in your browser settings, then tap the mic again.'
+      : /NotFound|DevicesNotFound/i.test(m + name)
+        ? 'No microphone found on this device.'
+      : /NotReadable|AbortError/i.test(m + name)
+        ? 'The microphone is busy — another app or tab may be holding it. Close it and try again.'
+      : !window.isSecureContext || /secure|https/i.test(m)
+        ? env.long || 'The mic needs a secure page. Open this over https:// or localhost.'
+      : m);
+    openSheet();
+  }
+}
+
+function openSocket(){
+  return new Promise((resolve, reject) => {
+    let ws;
+    try{ ws = new WebSocket(WS_BASE + '?key=' + encodeURIComponent(CFG.key)); }
+    catch(e){ return reject(e); }
+    live.ws = ws;
+    ws.binaryType = 'arraybuffer';   // synchronous decode — keeps audio in order
+
+    const guard = setTimeout(() => {
+      try{ ws.close(); }catch(e){}
+      reject(new Error('Connection timed out after 15s. Check the network, then try another model under Advanced.'));
+    }, 15000);
+
+    ws.onopen = () => {
+      send({ setup:{
+        model: 'models/' + CFG.model,
+        generationConfig: {
+          responseModalities: ['AUDIO'],
+          speechConfig: {
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: CFG.voice } },
+            languageCode: CFG.lang
+          }
+        },
+        systemInstruction: { parts:[{ text: systemPrompt() }] },
+        inputAudioTranscription: {},
+        outputAudioTranscription: {},
+        tools: [ EXPRESSION_TOOL ]
+      }});
+    };
+
+    ws.onmessage = ev => {
+      let msg;
+      try{
+        const text = typeof ev.data === 'string'
+          ? ev.data
+          : new TextDecoder().decode(new Uint8Array(ev.data));
+        msg = JSON.parse(text);
+      }catch(e){ return; }
+
+      if(msg.setupComplete){
+        clearTimeout(guard);
+        live.ready = true; live.starting = false;
+        $('#talk').classList.add('on'); $('#talk').classList.remove('busy');
+        $('#micIcon').innerHTML = '<rect x="6" y="6" width="12" height="12" rx="3" fill="currentColor" stroke="none"/>';
+        setStatus('Listening','live'); $('#hint').textContent = 'tap to hang up';
+        setMood('happy', 1500);
+        resolve();
+        return;
+      }
+      try{ handle(msg); }catch(e){ banner('Message handling failed', e.message); }
+    };
+
+    ws.onerror = () => {};
+    ws.onclose = e => {
+      clearTimeout(guard);
+      const wasReady = live.ready;
+      live.ready = false;
+      if(live.ws === ws) live.ws = null;
+      stopPlayback();
+      keepAwake(false);
+      if(!wasReady){
+        reject(new Error(closeHint(e)));
+      } else {
+        teardownAudio();
+        resetButton();
+        setStatus(e.code === 1000 ? 'Ended' : 'Disconnected', e.code === 1000 ? '' : 'err');
+        setMood(e.code === 1000 ? 'sleepy' : 'dizzy', 4000);
+        if(e.code !== 1000) showErr(closeHint(e));
+      }
+    };
+  });
+}
+
+function closeHint(e){
+  const r = ((e && e.reason) || '').trim();
+  if(/API key not valid|API_KEY_INVALID|401|PERMISSION/i.test(r))
+    return 'Google rejected that API key. Check it at aistudio.google.com/apikey.';
+  if(/not found|NOT_FOUND|is not supported|404/i.test(r))
+    return 'That model is not available to your key. Open Advanced and try another Live model.\n\n' + r;
+  if(/quota|RESOURCE_EXHAUSTED|429/i.test(r))
+    return 'Rate limit or quota hit on this key. Wait a minute and try again.\n\n' + r;
+  if(e && e.code === 1006)
+    return 'The connection dropped before Google answered (code 1006). Usually this is a wrong or expired API key, ' +
+           'a model your key cannot use, or a network that blocks WebSockets — school and office Wi-Fi often do. ' +
+           'Try mobile data, then try another model under Advanced.';
+  return r || 'The connection closed before the session opened (code ' + (e && e.code) + '). Check your key, model and network.';
+}
+
+function handle(msg){
+  if(msg.toolCall && msg.toolCall.functionCalls){
+    const responses = [];
+    for(const fc of msg.toolCall.functionCalls){
+      if(fc.name === 'set_expression'){
+        const em = fc.args && fc.args.emotion;
+        if(MOODS[em]) setMood(em);
+      }
+      responses.push({ id: fc.id, name: fc.name, response:{ result:'ok' } });
+    }
+    send({ toolResponse:{ functionResponses: responses } });
+    return;
+  }
+  if(msg.goAway){
+    setStatus('Session expiring — tap to reconnect','warn');
+    return;
+  }
+
+  const sc = msg.serverContent;
+  if(!sc) return;
+
+  if(sc.interrupted){
+    stopPlayback();
+    setMood('surprised', 900);
+    setStatus('Listening','live');
+    cap.them = '';
+    drawCap();
+    return;
+  }
+  if(sc.inputTranscription && sc.inputTranscription.text){
+    cap.me = (cap.me + sc.inputTranscription.text).slice(-140); drawCap();
+  }
+  if(sc.outputTranscription && sc.outputTranscription.text){
+    if(cap.fresh){ cap.them = ''; cap.fresh = false; }
+    cap.them = (cap.them + sc.outputTranscription.text).slice(-220);
+    drawCap();
+    hintMood(sc.outputTranscription.text);
+  }
+  if(sc.modelTurn && sc.modelTurn.parts){
+    for(const p of sc.modelTurn.parts){
+      if(p.inlineData && p.inlineData.data){
+        setStatus('Talking','live');
+        play(b64ToF32(p.inlineData.data));
+      }
+    }
+  }
+  if(sc.turnComplete){
+    setStatus('Listening','live');
+    cap.me = ''; cap.fresh = true; drawCap();
+  }
+}
+
+let hintLock = 0;
+function hintMood(txt){
+  const now = Date.now();
+  if(now - hintLock < 2500) return;
+  const t = txt.toLowerCase();
+  let m = null;
+  if(/\b(haha|hehe|lol)\b/.test(t)) m='laugh';
+  else if(/\b(love|adorable|sweet|cutie)\b/.test(t)) m='love';
+  else if(/\b(wow|whoa|amazing|incredible|really\?)\b/.test(t)) m='surprised';
+  else if(/\b(sorry|sad|unfortunately|afraid not)\b/.test(t)) m='sad';
+  else if(/\b(hmm|let me think|interesting|i wonder)\b/.test(t)) m='thinking';
+  else if(/!/.test(t)) m='excited';
+  if(m){ hintLock = now; setMood(m, 2600); }
+}
+
+function send(obj){
+  if(live.ws && live.ws.readyState === 1) live.ws.send(JSON.stringify(obj));
+}
+
+function teardownAudio(){
+  try{ if(live.node){ live.node.port.onmessage = null; live.node.disconnect(); } }catch(e){}
+  try{ if(live.proc){ live.proc.onaudioprocess = null; live.proc.disconnect(); } }catch(e){}
+  try{ if(live.stream) live.stream.getTracks().forEach(t=>t.stop()); }catch(e){}
+  try{ if(live.inCtx) live.inCtx.close(); }catch(e){}
+  live.node = live.proc = live.stream = live.inCtx = null;
+  // the OUTPUT context is deliberately kept alive: on iOS a fresh one
+  // created outside a tap would be born suspended and stay silent.
+}
+
+function resetButton(){
+  $('#talk').classList.remove('on','busy');
+  $('#micIcon').innerHTML = '<rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v4"/>';
+  $('#hint').textContent = 'tap to connect';
+  live.starting = false;
+}
+
+async function stop(){
+  const ws = live.ws; live.ws = null; live.ready = false;
+  stopPlayback(); teardownAudio(); keepAwake(false);
+  if(ws){ try{ ws.close(1000,'bye'); }catch(e){} }
+  resetButton();
+  cap.me = cap.them = ''; drawCap();
+  setStatus('Sleeping'); setMood('sleepy', 3000);
+  await new Promise(r=>setTimeout(r,120));
+}
+
+let tapLock = 0;
+$('#talk').addEventListener('click', () => {
+  const now = Date.now();
+  if(now - tapLock < 500) return;     // fat-finger / double-fire guard
+  tapLock = now;
+  try{ primeAudio(); }catch(e){ banner('Audio unavailable', e.message); }
+  if(live.ws || live.starting) stop(); else start();
+});
+
+document.addEventListener('visibilitychange', () => {
+  if(document.hidden && (live.ws || live.starting)){
+    stop().then(()=>setStatus('Paused — tap to resume'));
+  } else if(!document.hidden && live.ws){
+    keepAwake(true);
+  }
+});
+window.addEventListener('pagehide', () => { if(live.ws) stop(); });
+
+/* ---------- boot ------------------------------------------------- */
+requestAnimationFrame(tick);
+drawCap();
+setMood('neutral');
+if(!env.ok){
+  setStatus(env.short,'warn');
+  $('#hint').textContent = 'tap for why';
+  $('#gear').classList.add('nudge');
+} else if(!CFG.key){
+  $('#gear').classList.add('nudge');
+  setStatus('Add your API key to begin','warn');
+} else {
+  setStatus('Tap the mic to wake it');
+}
+</script>
+</body>
+</html>
